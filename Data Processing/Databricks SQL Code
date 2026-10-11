@@ -1,0 +1,139 @@
+--check if table is correct--
+SELECT * 
+FROM bochum.default.bright_coffee_shop_sales_dataset
+LIMIT 10;
+--checking if the rows match the original table rows/checking for null values--
+SELECT COUNT(*) AS total_rows,
+       COUNT(transaction_id) AS transaction_id_count,
+       COUNT(transaction_date) AS date_count,
+       COUNT(transaction_time) AS time_count,
+       COUNT(transaction_qty) AS quantity_count,
+       COUNT(store_id) AS store_count,
+       COUNT(store_location) AS location_count,
+       COUNT(product_id) AS product_count,
+       COUNT(unit_price) AS price_count,
+       COUNT(product_category) AS category_count,
+       COUNT(product_type) AS type_count,
+       COUNT(product_detail) AS detail_count
+FROM bochum.default.bright_coffee_shop_sales_dataset;
+
+--check if there are any duplicates trans_id's--
+SELECT  transaction_id,
+    COUNT(*) AS transaction_count
+FROM bochum.default.bright_coffee_shop_sales_dataset
+GROUP BY transaction_id
+HAVING COUNT(*) > 1;
+
+--check transaction quantity as well as unit_price min/max values--
+SELECT MAX(transaction_qty) AS max_quantity,
+       MIN(transaction_qty) AS min_quantity,
+       MAX(unit_price) AS max_price,
+       MIN(unit_price) AS min_price
+FROM bochum.default.bright_coffee_shop_sales_dataset;
+--checking what time the shop operates--
+SELECT
+    MIN(transaction_time) AS earliest_time,
+    MAX(transaction_time) AS latest_time
+FROM bochum.default.bright_coffee_shop_sales_dataset;
+
+--Total revenue --
+SELECT
+    SUM(CAST(REPLACE(unit_price, ',', '.') AS DECIMAL(10,2))
+        * transaction_qty
+    ) AS total_revenue
+FROM bochum.default.bright_coffee_shop_sales_dataset;
+
+----to find which hours are the busiest of them all-
+SELECT 
+    EXTRACT(HOUR FROM CAST(CONCAT(transaction_date, ' ', transaction_time) AS TIMESTAMP)) AS hour_of_day,
+    COUNT(transaction_id) AS total_transactions,
+    SUM(transaction_qty * CAST(REPLACE(unit_price, ',', '.') AS DOUBLE)) AS total_sales
+FROM bochum.default.bright_coffee_shop_sales_dataset;
+
+--BUILDING THE BIG CODE IN STEPS--
+
+ SELECT 
+    transaction_date,
+     store_location,
+    product_category,
+    product_type,
+    product_detail,
+    DAYNAME(transaction_date) AS Day_name, --original 
+    MONTHNAME(transaction_date) AS Month_name,
+     COUNT(transaction_id) AS number_of_sales,
+     SUM(transaction_qty) AS units_sold,
+     COUNT(DISTINCT product_id) AS unique_products,
+     COUNT(store_id) AS number_of_stores,
+     SUM(transaction_qty * CAST(REPLACE(unit_price, ',', '.') AS DECIMAL(10,2))) AS revenue,
+
+----Case statement always create buckets for enhanced analysis--
+    CASE 
+        WHEN DAYNAME(transaction_date) IN ('Sat','Sun') THEN 'Weekend'
+        WHEN DAYNAME(transaction_date) IN ('Mon','Tue','Wed','Thu','Fri') THEN 'Weekday'
+    END AS day_classification,
+---this case statement is classifying the transaction time column into time buckets.This is a new column--
+    CASE 
+        WHEN HOUR(transaction_time) >= 6 AND HOUR(transaction_time) < 12 THEN 'Morning'
+        WHEN HOUR(transaction_time) >= 12 AND HOUR(transaction_time) < 18 THEN 'Afternoon'
+        WHEN HOUR(transaction_time) >= 18 AND HOUR(transaction_time) < 21 THEN 'Evening'
+        ELSE 'Night' 
+        END AS time_of_day_classification
+     
+
+FROM bochum.default.bright_coffee_shop_sales_dataset
+
+GROUP BY ALL;
+
+    
+-- check how many unique orders were placed each day--
+SELECT DAYNAME(transaction_date) AS order_day,
+COUNT(DISTINCT transaction_id) AS total_orders 
+FROM bochum.default.bright_coffee_shop_sales_dataset
+ GROUP BY DAYNAME(transaction_date);
+
+--how many orders are made per hour--
+SELECT HOUR(transaction_time) AS order_hours, 
+COUNT(DISTINCT transaction_id) 
+AS total_orders 
+FROM bochum.default.bright_coffee_shop_sales_dataset 
+GROUP BY order_hours 
+ORDER BY order_hours;
+
+-- calculates the total sales and the percentage contribution of each product category from the dataset, we use REPLACE(unit_price, ',', '.') to fix formatting issues. It takes the unit_price column and replaces any commas with periods--
+
+SELECT product_category, 
+SUM(transaction_qty * CAST(REPLACE(unit_price, ',', '.') AS DOUBLE)) as total_sales, 
+SUM(transaction_qty * CAST(REPLACE(unit_price, ',', '.') AS DOUBLE))*100/SUM(SUM(transaction_qty * CAST(REPLACE(unit_price, ',', '.') AS DOUBLE))) OVER () AS percent_of_total_sales
+FROM bochum.default.bright_coffee_shop_sales_dataset
+GROUP BY product_category;
+
+-- Percentage of drink sales by size, element_at(split((product_detail, ' '), -1) AS drink_size
+--This 'extracts' the drink size. It splits the text in the product_detail column wherever there is a space, and takes the very last element (-1)
+
+SELECT element_at(split(product_detail, ' '), -1) AS drink_size, 
+SUM(transaction_qty * CAST(REPLACE(unit_price, ',', '.') AS DOUBLE)) as total_sales, 
+SUM(transaction_qty * CAST(REPLACE(unit_price, ',', '.') AS DOUBLE))*100/SUM(SUM(transaction_qty * CAST(REPLACE(unit_price, ',', '.') AS DOUBLE))) OVER () AS percent_of_total_sales
+FROM bochum.default.bright_coffee_shop_sales_dataset
+GROUP BY drink_size
+ORDER BY percent_of_total_sales DESC;
+
+-- calculating the total number of items sold for each different product category--
+
+SELECT product_category, sum(transaction_qty) as total_drinks_sold 
+FROM bochum.default.bright_coffee_shop_sales_dataset
+GROUP BY product_category;
+
+--10 best sellers by total drinks sold--
+SELECT product_type, sum(transaction_qty) as Total_Drinks_Sold 
+FROM bochum.default.bright_coffee_shop_sales_dataset
+GROUP BY product_type 
+ORDER BY SUM(transaction_qty) DESC LIMIT 10;
+
+-- 10 worst sellers by total drinks sold--
+SELECT product_type, sum(transaction_qty) as Total_Drinks_Sold 
+FROM bochum.default.bright_coffee_shop_sales_dataset
+GROUP BY product_type 
+ORDER BY SUM(transaction_qty)
+LIMIT 10;
+
+--END--
